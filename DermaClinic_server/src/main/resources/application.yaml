@@ -1,3 +1,27 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
 spring:
   application:
     name: DermaClinic
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/dermaclinic_db
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:Asdf1234!}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+jwt:
+  secret: ${JWT_SECRET:dermaclinic-super-secret-key-please-change-in-production-min-256-bits}
+  expiry: ${JWT_EXPIRY:86400000}   # 24 giờ, tính bằng milliseconds
