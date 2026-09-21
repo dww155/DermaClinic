@@ -3,103 +3,106 @@ package com.dww.DermaClinic.util;
 import com.dww.DermaClinic.entity.Permission;
 import com.dww.DermaClinic.entity.Role;
 import com.dww.DermaClinic.entity.User;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
+import com.dww.DermaClinic.exception.AppException;
+import com.dww.DermaClinic.exception.ErrorCode;
+import com.nimbusds.jose.*;
+import com.nimbusds.jose.crypto.MACSigner;
+import com.nimbusds.jose.crypto.MACVerifier;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
+import lombok.AccessLevel;
+import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.text.ParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
-import java.util.Set;
+import java.util.StringJoiner;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
+@FieldDefaults(level = AccessLevel.PRIVATE)
 public class JwtUtil {
 
-    private final SecretKey signingKey;
-    private final long expiry;
+    @Value("${jwt.secret}")
+    String signingKey;
 
-    public JwtUtil(
-            @Value("${jwt.secret}") String secret,
-            @Value("${jwt.expiry}") long expiry
-    ) {
-        this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-        this.expiry = expiry;
-    }
+    @Value("${jwt.expiry}")
+    long expiry;
 
-    // Generate access token with subject, userId, roles, permissions claims
+    // Generate signed JWT token using Nimbus
     public String generateToken(User user) {
-        Date now       = new Date();
-        Date expiresAt = new Date(now.getTime() + expiry);
+        Date now = new Date();
+        Date expiresAt = new Date(now.toInstant().plus(expiry, ChronoUnit.SECONDS).toEpochMilli());
 
-        Set<String> roles = user.getRoles().stream()
-                .map(Role::getName)
-                .collect(Collectors.toSet());
+        JWSHeader header = new JWSHeader(JWSAlgorithm.HS256);
 
-        Set<String> permissions = user.getRoles().stream()
-                .flatMap(role -> role.getPermissions().stream())
-                .map(Permission::getName)
-                .collect(Collectors.toSet());
+        JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+                .subject(user.getId().toString())
+                .claim("email", user.getEmail())
+                .claim("scope", buildScope(user))
+                .jwtID(UUID.randomUUID().toString())
+                .issuer("dww")
+                .issueTime(now)
+                .expirationTime(expiresAt)
+                .build();
 
-        return Jwts.builder()
-                .subject(user.getEmail())
-                .claim("userId",      user.getId().toString())
-                .claim("roles",       roles)
-                .claim("permissions", permissions)
-                .issuedAt(now)
-                .expiration(expiresAt)
-                .signWith(signingKey)
-                .compact();
-    }
+        SignedJWT signedJWT = new SignedJWT(header, claimsSet);
 
-    public String extractEmail(String token) {
-        return parseClaims(token).getSubject();
-    }
-
-    public UUID extractUserId(String token) {
-        return UUID.fromString(parseClaims(token).get("userId", String.class));
-    }
-
-    @SuppressWarnings("unchecked")
-    public Set<String> extractRoles(String token) {
-        return (Set<String>) parseClaims(token).get("roles", Set.class);
-    }
-
-    @SuppressWarnings("unchecked")
-    public Set<String> extractPermissions(String token) {
-        return (Set<String>) parseClaims(token).get("permissions", Set.class);
-    }
-
-    public Date extractExpiration(String token) {
-        return parseClaims(token).getExpiration();
-    }
-
-    // Returns true if signature is valid and token is not expired
-    public boolean isValid(String token) {
         try {
-            parseClaims(token);
-            return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            log.warn("Invalid JWT token: {}", e.getMessage());
-            return false;
+            JWSSigner signer = new MACSigner(signingKey.getBytes(StandardCharsets.UTF_8));
+            signedJWT.sign(signer);
+            return signedJWT.serialize();
+        } catch (JOSEException e) {
+            log.error("Error signing JWT token: {}", e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION, "Cannot sign JWT token");
         }
     }
 
-    public boolean isExpired(String token) {
-        return extractExpiration(token).before(new Date());
+    // Build space-separated scope string for Spring Security
+    private String buildScope(User user) {
+        StringJoiner joiner = new StringJoiner(" ");
+
+        if (user.getRoles() != null) {
+            for (Role role : user.getRoles()) {
+                joiner.add("ROLE_" + role.getName());
+
+                if (role.getPermissions() != null) {
+                    for (Permission permission : role.getPermissions()) {
+                        joiner.add(permission.getName());
+                    }
+                }
+            }
+        }
+
+        return joiner.toString();
     }
 
-    private Claims parseClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(signingKey)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+    // Verify token signature and expiration date, throws AppException if invalid
+    public SignedJWT verifyToken(String token) {
+        try {
+            SignedJWT signedJWT = SignedJWT.parse(token);
+
+            JWSVerifier verifier = new MACVerifier(signingKey.getBytes(StandardCharsets.UTF_8));
+            boolean validSignature = signedJWT.verify(verifier);
+
+            Date now = new Date();
+            Date exp = signedJWT.getJWTClaimsSet().getExpirationTime();
+            boolean validExp = exp != null && exp.after(now);
+
+            if (!validSignature || !validExp) {
+                log.warn("Invalid token: validSignature={}, validExp={}", validSignature, validExp);
+                throw new AppException(ErrorCode.UNAUTHENTICATED);
+            }
+
+            return signedJWT;
+        } catch (ParseException | JOSEException e) {
+            log.warn("Failed to parse or verify JWT token: {}", e.getMessage());
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
     }
 }
