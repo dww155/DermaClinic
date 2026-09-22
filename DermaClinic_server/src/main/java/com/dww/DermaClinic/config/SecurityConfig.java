@@ -1,8 +1,11 @@
 package com.dww.DermaClinic.config;
 
+import com.dww.DermaClinic.dto.response.ApiResponse;
 import com.dww.DermaClinic.exception.ErrorCode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Value;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -12,23 +15,23 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import tools.jackson.databind.ObjectMapper;
 
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
+import java.io.IOException;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class SecurityConfig {
 
-    @Value("${jwt.secret}")
-    String signingKey;
+    CustomJwtDecoder customJwtDecoder;
+    CustomAuthenticationEntryPoint authenticationEntryPoint;
+    ObjectMapper objectMapper;
 
     private static final String[] PUBLIC_ENDPOINTS = {
             "/auth/login",
@@ -56,38 +59,16 @@ public class SecurityConfig {
 
             .oauth2ResourceServer(oauth -> oauth
                     .jwt(jwt -> jwt
-                            .decoder(jwtDecoder())
+                            .decoder(customJwtDecoder)
                             .jwtAuthenticationConverter(jwtAuthenticationConverter())
                     )
-                    // 401: missing/invalid/expired token
-                    .authenticationEntryPoint((request, response, ex) -> {
-                        ErrorCode errorCode = ErrorCode.UNAUTHENTICATED;
-                        response.setStatus(errorCode.getStatusCode().value());
-                        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-
-                        Map<String, Object> body = Map.of(
-                                "code",    errorCode.getCode(),
-                                "message", errorCode.getMessage()
-                        );
-
-                        new ObjectMapper().writeValue(response.getWriter(), body);
-                    })
+                    .authenticationEntryPoint(authenticationEntryPoint)
             )
 
             // 403: authenticated but insufficient permission
             .exceptionHandling(ex -> ex
-                    .accessDeniedHandler((request, response, accessDeniedException) -> {
-                        ErrorCode errorCode = ErrorCode.UNAUTHORIZED;
-                        response.setStatus(errorCode.getStatusCode().value());
-                        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-
-                        Map<String, Object> body = Map.of(
-                                "code",    errorCode.getCode(),
-                                "message", errorCode.getMessage()
-                        );
-
-                        new ObjectMapper().writeValue(response.getWriter(), body);
-                    })
+                    .accessDeniedHandler((request, response, accessDeniedException) ->
+                            writeErrorResponse(response, ErrorCode.UNAUTHORIZED))
             );
 
         return http.build();
@@ -105,15 +86,16 @@ public class SecurityConfig {
         return converter;
     }
 
-    @Bean
-    public JwtDecoder jwtDecoder() {
-        SecretKeySpec secretKeySpec = new SecretKeySpec(
-                signingKey.getBytes(StandardCharsets.UTF_8),
-                "HS256"
-        );
+    // TECHNICAL DEBT
+    private void writeErrorResponse(HttpServletResponse response, ErrorCode errorCode) throws IOException {
+        response.setStatus(errorCode.getStatusCode().value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 
-        return NimbusJwtDecoder
-                .withSecretKey(secretKeySpec)
+        ApiResponse<Void> body = ApiResponse.<Void>builder()
+                .code(errorCode.getCode())
+                .message(errorCode.getMessage())
                 .build();
+
+        objectMapper.writeValue(response.getWriter(), body);
     }
 }

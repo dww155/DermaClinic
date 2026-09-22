@@ -1,7 +1,7 @@
 package com.dww.DermaClinic.dto.request;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -13,8 +13,8 @@ import lombok.experimental.FieldDefaults;
 public class LoginRequest {
 
     @NotBlank(message = "INVALID_REQUEST")
-    @Email(message = "INVALID_REQUEST")
-    String email;
+    @Pattern(regexp = "^[0-9]{9,15}$", message = "INVALID_REQUEST")
+    String phoneNumber;
 
     @NotBlank(message = "INVALID_REQUEST")
     String password;
