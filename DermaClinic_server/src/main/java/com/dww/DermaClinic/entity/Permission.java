@@ -3,11 +3,8 @@ package com.dww.DermaClinic.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Getter
@@ -17,7 +14,6 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(name = "permissions")
-@EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Permission {
 
@@ -26,17 +22,27 @@ public class Permission {
     @Column(name = "id", updatable = false, nullable = false)
     UUID id;
 
-    @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
-    LocalDateTime createdAt;
+    Instant createdAt;
 
-    @LastModifiedDate
-    @Column(name = "updated_at", nullable = false)
-    LocalDateTime updatedAt;
+    @Column(name = "updated_at")
+    Instant updatedAt;
 
     @Column(name = "name", nullable = false, unique = true, length = 100)
     String name;
 
     @Column(name = "description", length = 255)
     String description;
+
+    @PrePersist
+    protected void onCreate() {
+        if (this.createdAt == null) {
+            this.createdAt = Instant.now();
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = Instant.now();
+    }
 }
