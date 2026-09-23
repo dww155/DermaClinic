@@ -22,6 +22,13 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 60000ms
+
 jwt:
   secret: ${JWT_SECRET:bHVuY2hkb3duaGFsZndheXNpbGVudHJpdmVydG9uZXJlZ2lvbnRvcHBvc3NpYmx5cmU=}
   expiry: ${JWT_EXPIRY:86400}   # seconds
