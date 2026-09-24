@@ -4,7 +4,10 @@ import com.dww.DermaClinic.dto.response.ApiResponse;
 import com.dww.DermaClinic.exception.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
+import lombok.experimental.FieldDefaults;
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
@@ -15,14 +18,17 @@ import java.io.IOException;
 
 @Component
 @RequiredArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    private final ObjectMapper objectMapper;
+    ObjectMapper objectMapper;
 
     @Override
-    public void commence(HttpServletRequest request,
-                         HttpServletResponse response,
-                         AuthenticationException authException) throws IOException {
+    public void commence(
+            @NonNull HttpServletRequest request,
+            HttpServletResponse response,
+            @NonNull AuthenticationException authException
+    ) throws IOException {
 
         ErrorCode errorCode = ErrorCode.UNAUTHENTICATED;
 
