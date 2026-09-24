@@ -142,7 +142,7 @@
 			<version>3.0.1</version>
 		</dependency>
 
-		<!--	REDIS AND CACHING	-->
+		<!-- REDIS AND CACHING -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-redis</artifactId>
