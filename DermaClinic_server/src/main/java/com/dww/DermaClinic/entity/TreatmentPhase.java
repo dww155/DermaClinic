@@ -22,7 +22,7 @@ public class TreatmentPhase {
     Long phaseId;
 
     /** Parent treatment plan — cascade delete handled at DB level */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "plan_id")
     TreatmentPlan treatmentPlan;
 
